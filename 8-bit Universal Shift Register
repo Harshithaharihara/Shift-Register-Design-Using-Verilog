@@ -1,0 +1,30 @@
+module shift_register_8bit(
+    input        clk,
+    input        rst,
+    input  [1:0] mode,       // 00=Hold 01=SHR 10=SHL 11=Load
+    input        si_right,   // serial in from left  (for SHR)
+    input        si_left,    // serial in from right (for SHL)
+    input  [7:0] parallel_in,
+    output [7:0] q,
+    output       so_right,   // serial out LSB (SHR)
+    output       so_left     // serial out MSB (SHL)
+);
+    reg [7:0] sr;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst)
+            sr <= 8'b0000_0000;
+        else begin
+            case (mode)
+                2'b00: sr <= sr;                            // HOLD
+                2'b01: sr <= {si_right, sr[7:1]};          // SHIFT RIGHT
+                2'b10: sr <= {sr[6:0], si_left};           // SHIFT LEFT
+                2'b11: sr <= parallel_in;                  // PARALLEL LOAD
+            endcase
+        end
+    end
+
+    assign q        = sr;
+    assign so_right = sr[0];   // LSB exits on right-shift
+    assign so_left  = sr[7];   // MSB exits on left-shift
+endmodule
