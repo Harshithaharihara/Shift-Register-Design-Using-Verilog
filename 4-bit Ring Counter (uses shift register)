@@ -1,0 +1,12 @@
+module ring_counter(
+    input       clk,
+    input       rst,
+    output [3:0] q
+);
+    reg [3:0] sr;
+    always @(posedge clk or posedge rst) begin
+        if (rst) sr <= 4'b0001;
+        else     sr <= {sr[2:0], sr[3]};   // rotate left
+    end
+    assign q = sr;
+endmodule
