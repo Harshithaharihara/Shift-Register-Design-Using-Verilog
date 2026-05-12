@@ -1,0 +1,115 @@
+`timescale 1ns/1ps
+
+module tb_shift_register;
+    reg        clk, rst;
+    reg  [1:0] mode;
+    reg        si_right, si_left;
+    reg  [7:0] parallel_in;
+    wire [7:0] q;
+    wire       so_right, so_left;
+
+    // Ring and Johnson
+    wire [3:0] ring_q, johnson_q;
+
+    // PISO / SIPO
+    reg        piso_load;
+    reg  [7:0] piso_par_in;
+    wire       piso_serial_out;
+    reg        sipo_serial_in;
+    wire [7:0] sipo_par_out;
+
+    // Instantiate modules
+    shift_register_8bit uut (
+        .clk(clk), .rst(rst),
+        .mode(mode),
+        .si_right(si_right), .si_left(si_left),
+        .parallel_in(parallel_in),
+        .q(q), .so_right(so_right), .so_left(so_left)
+    );
+
+    ring_counter rc (.clk(clk), .rst(rst), .q(ring_q));
+    johnson_counter jc (.clk(clk), .rst(rst), .q(johnson_q));
+
+    piso_8bit piso (
+        .clk(clk), .rst(rst),
+        .load(piso_load), .par_in(piso_par_in),
+        .serial_out(piso_serial_out)
+    );
+
+    sipo_8bit sipo (
+        .clk(clk), .rst(rst),
+        .serial_in(sipo_serial_in),
+        .par_out(sipo_par_out)
+    );
+
+    initial clk = 0;
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("shift_register.vcd");
+        $dumpvars(0, tb_shift_register);
+
+        // ---- Reset ----
+        rst = 1; mode = 2'b00; si_right = 0; si_left = 0;
+        parallel_in = 8'hAB; piso_load = 0; piso_par_in = 8'h00;
+        sipo_serial_in = 0;
+        #12; rst = 0;
+
+        // ---- Parallel Load ----
+        $display("\n--- Parallel Load: 0xAB ---");
+        mode = 2'b11; parallel_in = 8'hAB;
+        @(posedge clk); #1;
+        $display("Q = %08b (0x%02h)", q, q);
+
+        // ---- Shift Right (8 clocks) ----
+        $display("\n--- Shift Right (si_right=1) ---");
+        mode = 2'b01; si_right = 1;
+        repeat(8) begin
+            @(posedge clk); #1;
+            $display("Q = %08b | so_right=%b", q, so_right);
+        end
+        mode = 2'b11; parallel_in = 8'h3C;
+        @(posedge clk); #1;
+        $display("\n--- Shift Left (si_left=0) ---");
+        mode = 2'b10; si_left = 0;
+        repeat(8) begin
+            @(posedge clk); #1;
+            $display("Q = %08b | so_left=%b", q, so_left);
+        end
+        $display("\n--- Hold Mode ---");
+        mode = 2'b00;
+        repeat(3) @(posedge clk);
+        #1; $display("Q = %08b (unchanged)", q);
+        $display("\n--- PISO: Load 0xD5, then shift out ---");
+        piso_load = 1; piso_par_in = 8'hD5;
+        @(posedge clk); #1; piso_load = 0;
+        repeat(8) begin
+            @(posedge clk); #1;
+            $display("PISO serial_out = %b", piso_serial_out);
+        end
+        $display("\n--- SIPO: Shift in 10110100 ---");
+        begin : sipo_block
+            reg [7:0] pattern;
+            integer i;
+            pattern = 8'b1011_0100;
+            for (i = 0; i < 8; i = i + 1) begin
+                sipo_serial_in = pattern[i];
+                @(posedge clk); #1;
+            end
+        end
+        $display("SIPO par_out = %08b (0x%02h)", sipo_par_out, sipo_par_out);
+        $display("\n--- Ring Counter (8 clocks) ---");
+        repeat(8) begin
+            @(posedge clk); #1;
+            $display("Ring Q = %04b", ring_q);
+        end
+        $display("\n--- Johnson Counter (8 clocks) ---");
+        repeat(8) begin
+            @(posedge clk); #1;
+            $display("Johnson Q = %04b", johnson_q);
+        end
+
+        #20; $finish;
+    end
+endmodule
+
